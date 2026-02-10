@@ -1,0 +1,6 @@
+---
+- name: Generate CSR for expiring/expired certificates on Windows
+  hosts: windows
+  gather_facts: false
+  roles:
+    - role: windows_certificate_csr_generation

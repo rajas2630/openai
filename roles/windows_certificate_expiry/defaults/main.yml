@@ -1,0 +1,16 @@
+---
+cert_days_threshold: 30
+cert_stores:
+  - My
+  - WebHosting
+
+report_file: "./certificate_expiry_report_{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}.csv"
+worknotes_file: "./certificate_expiry_worknotes_{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}.txt"
+
+# Email settings (override as needed via inventory/group_vars/extra-vars)
+smtp_host: "smtp.example.com"
+smtp_port: 25
+email_from: "ansible@example.com"
+email_to:
+  - "windows-team@example.com"
+email_subject: "Windows Certificate Expiry Report"
