@@ -1,0 +1,13 @@
+---
+# Certificate file to install on each Windows target
+certificate_file_path: "C:\\Temp\\csr_requests\\issued_{{ inventory_hostname }}.cer"
+
+# Target certificate store
+install_store_location: "LocalMachine"
+install_store_name: "My"
+
+# Optional pfx password (only needed when installing .pfx/.p12)
+certificate_password: ""
+
+# Control-node summary artifact
+install_summary_file: "./certificate_install_summary_{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}.json"

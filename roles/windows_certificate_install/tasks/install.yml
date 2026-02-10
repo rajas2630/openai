@@ -1,0 +1,66 @@
+---
+- name: Actual tasks | Install generated certificate into Windows store
+  block:
+    - name: Actual tasks | Import certificate file
+      ansible.windows.win_powershell:
+        script: |
+          $certPath = "{{ certificate_file_path }}"
+          $storePath = "Cert:\{{ install_store_location }}\{{ install_store_name }}"
+          $ext = [System.IO.Path]::GetExtension($certPath).ToLowerInvariant()
+
+          if (-not (Test-Path $certPath)) {
+            throw "Certificate file not found at $certPath"
+          }
+
+          if (-not (Test-Path $storePath)) {
+            throw "Certificate store path not found: $storePath"
+          }
+
+          if ($ext -eq '.pfx' -or $ext -eq '.p12') {
+            $pwd = ConvertTo-SecureString "{{ certificate_password }}" -AsPlainText -Force
+            $imported = Import-PfxCertificate -FilePath $certPath -CertStoreLocation $storePath -Password $pwd -Exportable
+          }
+          else {
+            $imported = Import-Certificate -FilePath $certPath -CertStoreLocation $storePath
+          }
+
+          if (-not $imported) {
+            throw "Certificate import did not return certificate details"
+          }
+
+          $result = [ordered]@{
+            Hostname          = $env:COMPUTERNAME
+            CertificatePath   = $certPath
+            Store             = $storePath
+            Thumbprint        = $imported.Thumbprint
+            Subject           = $imported.Subject
+            NotAfter          = $imported.NotAfter.ToString('yyyy-MM-dd HH:mm:ss')
+            Status            = 'INSTALLED'
+            Reason            = ''
+          }
+
+          $result | ConvertTo-Json -Depth 4
+      register: install_raw
+
+    - name: Actual tasks | Save certificate install result
+      ansible.builtin.set_fact:
+        certificate_install_result:
+          host: "{{ inventory_hostname }}"
+          certificate_file_path: "{{ (install_raw.output | from_json).CertificatePath | default(certificate_file_path) }}"
+          store: "{{ (install_raw.output | from_json).Store | default(install_store_location ~ '\\' ~ install_store_name) }}"
+          status: "{{ (install_raw.output | from_json).Status | default('UNKNOWN') }}"
+          reason: "{{ (install_raw.output | from_json).Reason | default('') }}"
+          thumbprint: "{{ (install_raw.output | from_json).Thumbprint | default('') }}"
+          subject: "{{ (install_raw.output | from_json).Subject | default('') }}"
+
+  rescue:
+    - name: Actual tasks | Record install failure without stopping play
+      ansible.builtin.set_fact:
+        certificate_install_result:
+          host: "{{ inventory_hostname }}"
+          certificate_file_path: "{{ certificate_file_path }}"
+          store: "{{ install_store_location }}\\{{ install_store_name }}"
+          status: "FAILED"
+          reason: "{{ ansible_failed_result.msg | default('Unknown error during certificate installation') }}"
+          thumbprint: ""
+          subject: ""

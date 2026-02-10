@@ -1,0 +1,25 @@
+---
+- name: Pre-check | Validate WinRM connectivity
+  ansible.windows.win_ping:
+
+- name: Pre-check | Verify certificate file exists
+  ansible.windows.win_stat:
+    path: "{{ certificate_file_path }}"
+  register: certificate_input_stat
+
+- name: Pre-check | Ensure certificate file is present
+  ansible.builtin.assert:
+    that:
+      - certificate_input_stat.stat.exists
+    fail_msg: "Certificate file not found at {{ certificate_file_path }}"
+
+- name: Pre-check | Initialize install result fact
+  ansible.builtin.set_fact:
+    certificate_install_result:
+      host: "{{ inventory_hostname }}"
+      certificate_file_path: "{{ certificate_file_path }}"
+      store: "{{ install_store_location }}\\{{ install_store_name }}"
+      status: "initialized"
+      reason: ""
+      thumbprint: ""
+      subject: ""
