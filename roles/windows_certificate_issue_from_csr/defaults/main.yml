@@ -1,0 +1,21 @@
+---
+# Input CSR file path on each Windows target
+csr_input_path: "C:\\Temp\\csr_requests\\request.csr"
+
+# Output certificate file path on each Windows target
+issued_cert_output_path: "C:\\Temp\\csr_requests\\issued_{{ inventory_hostname }}.cer"
+
+# Enterprise CA config (example: ca01.contoso.local\\Contoso-Issuing-CA)
+# Mandatory for certreq -submit flow
+ca_config: ""
+
+# Optional certreq attributes, e.g. "CertificateTemplate:WebServer"
+certreq_attributes: ""
+
+# Install issued cert into store after successful issuance
+install_issued_certificate: true
+cert_store_location: "LocalMachine"
+cert_store_name: "My"
+
+# Control-node summary artifact
+issue_summary_file: "./certificate_issue_summary_{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}.json"

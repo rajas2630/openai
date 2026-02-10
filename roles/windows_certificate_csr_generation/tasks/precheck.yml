@@ -1,0 +1,21 @@
+---
+- name: Pre-check | Validate WinRM connectivity
+  ansible.windows.win_ping:
+
+- name: Pre-check | Validate required thumbprint input
+  ansible.builtin.assert:
+    that:
+      - expired_cert_thumbprint | length > 0
+    fail_msg: "Please provide expired_cert_thumbprint (e.g., -e expired_cert_thumbprint=ABC123...)."
+
+- name: Pre-check | Initialize CSR result fact
+  ansible.builtin.set_fact:
+    csr_generation_result:
+      host: "{{ inventory_hostname }}"
+      thumbprint: "{{ expired_cert_thumbprint }}"
+      status: "initialized"
+      reason: ""
+      csr_path: ""
+      cert_subject: ""
+      cert_not_after: ""
+      days_to_expire: ""

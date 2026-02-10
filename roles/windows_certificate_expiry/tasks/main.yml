@@ -1,0 +1,12 @@
+---
+- name: Include pre-check tasks
+  ansible.builtin.include_tasks: precheck.yml
+
+- name: Include certificate collection tasks
+  ansible.builtin.include_tasks: collect.yml
+
+- name: Include post-check tasks
+  ansible.builtin.include_tasks: postcheck.yml
+
+- name: Include email tasks
+  ansible.builtin.include_tasks: email.yml
