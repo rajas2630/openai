@@ -1,0 +1,27 @@
+---
+# Input: certificate to use as template for CSR generation
+expired_cert_thumbprint: ""
+cert_store_name: "My"
+cert_store_location: "LocalMachine"
+
+# Consider cert expiring if <= this many days remaining
+expiry_threshold_days: 30
+
+# CSR output on Windows target
+target_csr_dir: "C:\\Temp\\csr_requests"
+csr_file_name: "{{ inventory_hostname }}_{{ expired_cert_thumbprint | default('unknown') }}.csr"
+inf_file_name: "{{ inventory_hostname }}_{{ expired_cert_thumbprint | default('unknown') }}.inf"
+
+# Optional overrides for CSR request
+csr_key_length: 2048
+csr_machine_key_set: true
+csr_exportable: true
+csr_provider_name: "Microsoft RSA SChannel Cryptographic Provider"
+csr_hash_algorithm: "sha256"
+csr_key_spec: 1
+
+# Optional SAN DNS entries (leave empty to skip SAN extension)
+csr_san_dns: []
+
+# Local summary artifact
+csr_summary_file: "./certificate_csr_summary_{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}.json"

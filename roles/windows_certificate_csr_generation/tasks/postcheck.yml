@@ -1,0 +1,32 @@
+---
+- name: Post-check | Build consolidated CSR summary on control node
+  run_once: true
+  delegate_to: localhost
+  vars:
+    _csr_results: >-
+      {{
+        ansible_play_hosts_all
+        | map('extract', hostvars, 'csr_generation_result')
+        | select('defined')
+        | list
+      }}
+  ansible.builtin.copy:
+    dest: "{{ csr_summary_file }}"
+    mode: "0644"
+    content: "{{ _csr_results | to_nice_json }}"
+  register: csr_summary_result
+
+- name: Post-check | Verify summary file exists
+  run_once: true
+  delegate_to: localhost
+  ansible.builtin.stat:
+    path: "{{ csr_summary_result.dest }}"
+  register: csr_summary_stat
+
+- name: Post-check | Print CSR generation summary location
+  run_once: true
+  delegate_to: localhost
+  ansible.builtin.debug:
+    msg:
+      - "CSR summary file: {{ csr_summary_result.dest }}"
+      - "Summary exists: {{ csr_summary_stat.stat.exists }}"
