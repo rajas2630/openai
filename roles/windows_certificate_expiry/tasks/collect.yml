@@ -1,0 +1,91 @@
+---
+- name: Actual tasks | Collect certificate expiry details with protection
+  block:
+    - name: Actual tasks | Read certificate stores and expiry data
+      ansible.windows.win_powershell:
+        script: |
+          $today = Get-Date
+          $threshold = $today.AddDays({{ cert_days_threshold }})
+          $stores = @({{ cert_stores | map('to_json') | join(', ') }})
+          $output = @()
+
+          foreach ($storeName in $stores) {
+            try {
+              $path = "Cert:\LocalMachine\$storeName"
+              if (Test-Path $path) {
+                Get-ChildItem -Path $path -ErrorAction Stop | ForEach-Object {
+                  $daysToExpire = [int]([Math]::Floor(($_.NotAfter - $today).TotalDays))
+                  $output += [PSCustomObject]@{
+                    Hostname      = $env:COMPUTERNAME
+                    Store         = $storeName
+                    Subject       = $_.Subject
+                    Issuer        = $_.Issuer
+                    Thumbprint    = $_.Thumbprint
+                    NotAfter      = $_.NotAfter.ToString("yyyy-MM-dd HH:mm:ss")
+                    DaysToExpire  = $daysToExpire
+                    ExpiringSoon  = ($_.NotAfter -le $threshold)
+                  }
+                }
+              }
+              else {
+                $output += [PSCustomObject]@{
+                  Hostname      = $env:COMPUTERNAME
+                  Store         = $storeName
+                  Subject       = "STORE_NOT_FOUND"
+                  Issuer        = "N/A"
+                  Thumbprint    = "N/A"
+                  NotAfter      = "N/A"
+                  DaysToExpire  = -99999
+                  ExpiringSoon  = $false
+                }
+              }
+            }
+            catch {
+              $output += [PSCustomObject]@{
+                Hostname      = $env:COMPUTERNAME
+                Store         = $storeName
+                Subject       = "COLLECTION_ERROR"
+                Issuer        = $_.Exception.Message
+                Thumbprint    = "N/A"
+                NotAfter      = "N/A"
+                DaysToExpire  = -99999
+                ExpiringSoon  = $false
+              }
+            }
+          }
+
+          $output | ConvertTo-Json -Depth 4
+      register: cert_data_raw
+
+    - name: Actual tasks | Parse certificate data
+      ansible.builtin.set_fact:
+        host_cert_report: "{{ cert_data_raw.output | default('[]') | from_json }}"
+        host_worknotes: >-
+          {{
+            host_worknotes
+            + [
+                'SUCCESS: Certificate data collected from ' ~ inventory_hostname,
+                'DETAIL: Total entries=' ~ ((cert_data_raw.output | default('[]') | from_json | length) | string)
+              ]
+          }}
+
+  rescue:
+    - name: Actual tasks | Rescue when certificate collection fails
+      ansible.builtin.set_fact:
+        host_cert_report:
+          - Hostname: "{{ inventory_hostname }}"
+            Store: "N/A"
+            Subject: "COLLECTION_FAILED"
+            Issuer: "N/A"
+            Thumbprint: "N/A"
+            NotAfter: "N/A"
+            DaysToExpire: -99999
+            ExpiringSoon: false
+        host_worknotes: >-
+          {{
+            host_worknotes
+            + [
+                'FAILED: Certificate collection failed on ' ~ inventory_hostname,
+                'REASON: ' ~ (ansible_failed_result.msg | default('Unknown error'))
+              ]
+          }}

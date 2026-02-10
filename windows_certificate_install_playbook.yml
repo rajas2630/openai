@@ -1,0 +1,6 @@
+---
+- name: Install generated certificate on Windows servers
+  hosts: windows
+  gather_facts: false
+  roles:
+    - role: windows_certificate_install

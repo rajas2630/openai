@@ -1,0 +1,6 @@
+---
+- name: Generate certificate expiry report for Windows servers
+  hosts: windows
+  gather_facts: false
+  roles:
+    - role: windows_certificate_expiry

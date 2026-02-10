@@ -1,0 +1,9 @@
+---
+- name: Include pre-check tasks
+  ansible.builtin.include_tasks: precheck.yml
+
+- name: Include certificate install tasks
+  ansible.builtin.include_tasks: install.yml
+
+- name: Include post-check tasks
+  ansible.builtin.include_tasks: postcheck.yml

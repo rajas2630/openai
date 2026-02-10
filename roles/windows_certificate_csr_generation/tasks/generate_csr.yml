@@ -1,0 +1,118 @@
+---
+- name: Actual tasks | Generate CSR from input certificate when expiring/expired
+  block:
+    - name: Actual tasks | Inspect certificate and generate CSR if required
+      ansible.windows.win_powershell:
+        script: |
+          $thumb = "{{ expired_cert_thumbprint }}".Replace(' ', '')
+          $storePath = "Cert:\{{ cert_store_location }}\{{ cert_store_name }}"
+          $today = Get-Date
+          $thresholdDate = $today.AddDays({{ expiry_threshold_days }})
+
+          $cert = Get-ChildItem -Path $storePath -ErrorAction Stop |
+            Where-Object { $_.Thumbprint -eq $thumb } |
+            Select-Object -First 1
+
+          if (-not $cert) {
+            throw "Certificate with thumbprint '$thumb' not found in $storePath"
+          }
+
+          $daysToExpire = [int][Math]::Floor(($cert.NotAfter - $today).TotalDays)
+          $isExpiringOrExpired = ($cert.NotAfter -le $thresholdDate)
+
+          $baseResult = [ordered]@{
+            Hostname            = $env:COMPUTERNAME
+            Thumbprint          = $cert.Thumbprint
+            Subject             = $cert.Subject
+            NotAfter            = $cert.NotAfter.ToString('yyyy-MM-dd HH:mm:ss')
+            DaysToExpire        = $daysToExpire
+            ExpiringOrExpired   = $isExpiringOrExpired
+            Status              = 'SKIPPED'
+            Reason              = ''
+            CsrPath             = ''
+            InfPath             = ''
+          }
+
+          if (-not $isExpiringOrExpired) {
+            $baseResult.Reason = "Certificate is not within threshold of {{ expiry_threshold_days }} days."
+            $baseResult | ConvertTo-Json -Depth 5
+            exit 0
+          }
+
+          $csrDir = "{{ target_csr_dir }}"
+          $csrFile = "{{ csr_file_name }}"
+          $infFile = "{{ inf_file_name }}"
+          New-Item -Path $csrDir -ItemType Directory -Force | Out-Null
+
+          $csrPath = Join-Path $csrDir $csrFile
+          $infPath = Join-Path $csrDir $infFile
+
+          $dnsList = @({{ csr_san_dns | map('to_json') | join(', ') }})
+          $sanLine = ""
+          if ($dnsList.Count -gt 0) {
+            $sanValues = $dnsList | ForEach-Object { "dns=$_" }
+            $sanLine = "2.5.29.17 = `{text`}" + "`n_continue_ = `\"" + ($sanValues -join '&') + "`\""
+          }
+
+          $infLines = @(
+            '[Version]',
+            'Signature="$Windows NT$"',
+            '',
+            '[NewRequest]',
+            "Subject = `\"$($cert.Subject)`\"",
+            "KeyLength = {{ csr_key_length }}",
+            "Exportable = " + ($(if ({{ csr_exportable | bool | lower }}) { 'TRUE' } else { 'FALSE' })),
+            "MachineKeySet = " + ($(if ({{ csr_machine_key_set | bool | lower }}) { 'TRUE' } else { 'FALSE' })),
+            'SMIME = FALSE',
+            'PrivateKeyArchive = FALSE',
+            'UserProtected = FALSE',
+            'UseExistingKeySet = FALSE',
+            "ProviderName = `\"{{ csr_provider_name }}`\"",
+            'ProviderType = 12',
+            'RequestType = PKCS10',
+            "HashAlgorithm = {{ csr_hash_algorithm }}",
+            "KeySpec = {{ csr_key_spec }}"
+          )
+
+          if ($sanLine) {
+            $infLines += @('', '[Extensions]', $sanLine)
+          }
+
+          Set-Content -Path $infPath -Value ($infLines -join "`r`n") -Encoding Ascii
+
+          certreq.exe -new $infPath $csrPath | Out-Null
+
+          if (-not (Test-Path $csrPath)) {
+            throw "CSR file was not created at $csrPath"
+          }
+
+          $baseResult.Status = 'GENERATED'
+          $baseResult.CsrPath = $csrPath
+          $baseResult.InfPath = $infPath
+          $baseResult | ConvertTo-Json -Depth 5
+      register: csr_raw
+
+    - name: Actual tasks | Save CSR generation result fact
+      ansible.builtin.set_fact:
+        csr_generation_result:
+          host: "{{ inventory_hostname }}"
+          thumbprint: "{{ (csr_raw.output | from_json).Thumbprint | default(expired_cert_thumbprint) }}"
+          status: "{{ (csr_raw.output | from_json).Status | default('UNKNOWN') }}"
+          reason: "{{ (csr_raw.output | from_json).Reason | default('') }}"
+          csr_path: "{{ (csr_raw.output | from_json).CsrPath | default('') }}"
+          cert_subject: "{{ (csr_raw.output | from_json).Subject | default('') }}"
+          cert_not_after: "{{ (csr_raw.output | from_json).NotAfter | default('') }}"
+          days_to_expire: "{{ (csr_raw.output | from_json).DaysToExpire | default('') }}"
+
+  rescue:
+    - name: Actual tasks | Record failure without stopping play
+      ansible.builtin.set_fact:
+        csr_generation_result:
+          host: "{{ inventory_hostname }}"
+          thumbprint: "{{ expired_cert_thumbprint }}"
+          status: "FAILED"
+          reason: "{{ ansible_failed_result.msg | default('Unknown error during CSR generation') }}"
+          csr_path: ""
+          cert_subject: ""
+          cert_not_after: ""
+          days_to_expire: ""

@@ -1,0 +1,9 @@
+---
+- name: Pre-check | Validate WinRM connectivity
+  ansible.windows.win_ping:
+  register: win_ping_result
+
+- name: Pre-check | Initialize per-host report defaults
+  ansible.builtin.set_fact:
+    host_cert_report: []
+    host_worknotes: []
