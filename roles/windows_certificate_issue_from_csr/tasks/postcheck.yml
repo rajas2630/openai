@@ -1,0 +1,32 @@
+---
+- name: Post-check | Build consolidated certificate issue summary on control node
+  run_once: true
+  delegate_to: localhost
+  vars:
+    _issue_results: >-
+      {{
+        ansible_play_hosts_all
+        | map('extract', hostvars, 'certificate_issue_result')
+        | select('defined')
+        | list
+      }}
+  ansible.builtin.copy:
+    dest: "{{ issue_summary_file }}"
+    mode: "0644"
+    content: "{{ _issue_results | to_nice_json }}"
+  register: issue_summary_result
+
+- name: Post-check | Verify summary file exists
+  run_once: true
+  delegate_to: localhost
+  ansible.builtin.stat:
+    path: "{{ issue_summary_result.dest }}"
+  register: issue_summary_stat
+
+- name: Post-check | Print certificate issue summary location
+  run_once: true
+  delegate_to: localhost
+  ansible.builtin.debug:
+    msg:
+      - "Certificate issue summary file: {{ issue_summary_result.dest }}"
+      - "Summary exists: {{ issue_summary_stat.stat.exists }}"

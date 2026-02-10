@@ -1,0 +1,76 @@
+---
+- name: Actual tasks | Submit CSR and generate certificate
+  block:
+    - name: Actual tasks | Submit CSR to CA and optionally install certificate
+      ansible.windows.win_powershell:
+        script: |
+          $csrPath = "{{ csr_input_path }}"
+          $certOut = "{{ issued_cert_output_path }}"
+          $caConfig = "{{ ca_config }}"
+          $attributes = "{{ certreq_attributes }}"
+          $installCert = {{ install_issued_certificate | bool | lower }}
+
+          if (-not (Test-Path $csrPath)) {
+            throw "CSR file not found at $csrPath"
+          }
+
+          $certDir = Split-Path -Path $certOut -Parent
+          if ($certDir -and -not (Test-Path $certDir)) {
+            New-Item -Path $certDir -ItemType Directory -Force | Out-Null
+          }
+
+          $submitArgs = @('-submit', '-config', $caConfig)
+          if ($attributes) {
+            $submitArgs += @('-attrib', $attributes)
+          }
+          $submitArgs += @($csrPath, $certOut)
+
+          $submitOutput = & certreq.exe @submitArgs 2>&1 | Out-String
+
+          if (-not (Test-Path $certOut)) {
+            throw "Certificate file was not created at $certOut. certreq output: $submitOutput"
+          }
+
+          $requestId = ''
+          if ($submitOutput -match 'RequestId:\s*(\d+)') {
+            $requestId = $Matches[1]
+          }
+
+          if ($installCert) {
+            & certreq.exe -accept $certOut | Out-Null
+          }
+
+          $result = [ordered]@{
+            Hostname            = $env:COMPUTERNAME
+            CsrInputPath        = $csrPath
+            IssuedCertPath      = $certOut
+            RequestId           = $requestId
+            InstalledToStore    = $installCert
+            TargetStore         = "{{ cert_store_location }}\\{{ cert_store_name }}"
+            Status              = 'GENERATED'
+            Reason              = ''
+          }
+
+          $result | ConvertTo-Json -Depth 4
+      register: issue_raw
+
+    - name: Actual tasks | Save certificate issue result
+      ansible.builtin.set_fact:
+        certificate_issue_result:
+          host: "{{ inventory_hostname }}"
+          csr_input_path: "{{ (issue_raw.output | from_json).CsrInputPath | default(csr_input_path) }}"
+          issued_cert_path: "{{ (issue_raw.output | from_json).IssuedCertPath | default('') }}"
+          status: "{{ (issue_raw.output | from_json).Status | default('UNKNOWN') }}"
+          reason: "{{ (issue_raw.output | from_json).Reason | default('') }}"
+          request_id: "{{ (issue_raw.output | from_json).RequestId | default('') }}"
+
+  rescue:
+    - name: Actual tasks | Record failure without stopping play
+      ansible.builtin.set_fact:
+        certificate_issue_result:
+          host: "{{ inventory_hostname }}"
+          csr_input_path: "{{ csr_input_path }}"
+          issued_cert_path: ""
+          status: "FAILED"
+          reason: "{{ ansible_failed_result.msg | default('Unknown error during certificate issuance') }}"
+          request_id: ""

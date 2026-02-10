@@ -1,0 +1,30 @@
+---
+- name: Pre-check | Validate WinRM connectivity
+  ansible.windows.win_ping:
+
+- name: Pre-check | Validate required CA configuration
+  ansible.builtin.assert:
+    that:
+      - ca_config | length > 0
+    fail_msg: "Please provide ca_config (example: ca01.contoso.local\\Contoso-Issuing-CA)."
+
+- name: Pre-check | Verify CSR input file exists
+  ansible.windows.win_stat:
+    path: "{{ csr_input_path }}"
+  register: csr_input_stat
+
+- name: Pre-check | Ensure CSR input file is present
+  ansible.builtin.assert:
+    that:
+      - csr_input_stat.stat.exists
+    fail_msg: "CSR file not found at {{ csr_input_path }}"
+
+- name: Pre-check | Initialize issue result fact
+  ansible.builtin.set_fact:
+    certificate_issue_result:
+      host: "{{ inventory_hostname }}"
+      csr_input_path: "{{ csr_input_path }}"
+      issued_cert_path: ""
+      status: "initialized"
+      reason: ""
+      request_id: ""
