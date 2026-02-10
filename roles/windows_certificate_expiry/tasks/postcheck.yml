@@ -1,0 +1,71 @@
+---
+- name: Post-check | Build combined certificate report on control node
+  run_once: true
+  delegate_to: localhost
+  vars:
+    _all_records: >-
+      {{
+        ansible_play_hosts_all
+        | map('extract', hostvars, 'host_cert_report')
+        | select('defined')
+        | list
+        | flatten
+      }}
+  ansible.builtin.copy:
+    dest: "{{ report_file }}"
+    mode: "0644"
+    content: |
+      Hostname,Store,Subject,Issuer,Thumbprint,NotAfter,DaysToExpire,ExpiringSoon
+      {% for rec in _all_records %}
+      {{ rec.Hostname | default('') }},{{ rec.Store | default('') }},"{{ rec.Subject | default('') | replace('"', '""') }}","{{ rec.Issuer | default('') | replace('"', '""') }}",{{ rec.Thumbprint | default('') }},{{ rec.NotAfter | default('') }},{{ rec.DaysToExpire | default('') }},{{ rec.ExpiringSoon | default('') }}
+      {% endfor %}
+  register: report_file_result
+
+- name: Post-check | Build worknotes summary on control node
+  run_once: true
+  delegate_to: localhost
+  vars:
+    _all_worknotes: >-
+      {{
+        ansible_play_hosts_all
+        | map('extract', hostvars, 'host_worknotes')
+        | select('defined')
+        | list
+        | flatten
+      }}
+  ansible.builtin.copy:
+    dest: "{{ worknotes_file }}"
+    mode: "0644"
+    content: |
+      Certificate Expiry Collection Worknotes
+      Generated: {{ lookup('pipe', 'date +%Y-%m-%d\ %H:%M:%S') }}
+      Threshold (days): {{ cert_days_threshold }}
+
+      {% for note in _all_worknotes %}
+      - {{ note }}
+      {% endfor %}
+  register: worknotes_file_result
+
+- name: Post-check | Ensure report artifact was created
+  run_once: true
+  delegate_to: localhost
+  ansible.builtin.stat:
+    path: "{{ report_file_result.dest }}"
+  register: report_stat
+
+- name: Post-check | Ensure worknotes artifact was created
+  run_once: true
+  delegate_to: localhost
+  ansible.builtin.stat:
+    path: "{{ worknotes_file_result.dest }}"
+  register: worknotes_stat
+
+- name: Post-check | Print generated artifact paths
+  run_once: true
+  delegate_to: localhost
+  ansible.builtin.debug:
+    msg:
+      - "Report file: {{ report_file_result.dest }}"
+      - "Worknotes file: {{ worknotes_file_result.dest }}"
+      - "Report exists: {{ report_stat.stat.exists }}"
+      - "Worknotes exists: {{ worknotes_stat.stat.exists }}"
